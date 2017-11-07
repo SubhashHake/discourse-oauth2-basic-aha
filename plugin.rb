@@ -95,6 +95,8 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
     token = auth['credentials']['token']
     user_details = fetch_user_details(token, auth['info'][:id])
 
+    log("subhash-> user_details: #{user_details}")
+    
     result.name = user_details[:name]
     result.username = user_details[:username]
     result.email = user_details[:email]
@@ -102,15 +104,21 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
 
     current_info = ::PluginStore.get("oauth2_basic", "oauth2_basic_user_#{user_details[:user_id]}")
     if current_info
+      log("subhash-> user_detailscurrent_info: #{current_info}")
       result.user = User.where(id: current_info[:user_id]).first
     elsif SiteSetting.oauth2_email_verified?
+      log("subhash-> SiteSetting.oauth2_email_verified?")
       result.user = User.find_by_email(result.email)
+      log("subhash->  result.user #{result.user}")
       if result.user && user_details[:user_id]
+        log("subhash-> user_details[:user_id] #{user_details[:user_id]}")
         ::PluginStore.set("oauth2_basic", "oauth2_basic_user_#{user_details[:user_id]}", user_id: result.user.id)
+         log("subhash-> after oauth2_basic_user_ ")
       end
     end
-
+   log("subhash-> before extra_data")
     result.extra_data = { oauth2_basic_user_id: user_details[:user_id] }
+     log("subhash->  result.extra_data #{result.extra_data}")
     result
   end
 
