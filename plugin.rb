@@ -68,6 +68,10 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
     Rails.logger.warn("OAuth2 Debugging: #{info}") if SiteSetting.oauth2_debug_auth
   end
 
+  def user_datasets= user_datasets
+    @user_datasets = user_datasets
+  end
+
   def fetch_user_details(token, id)
     user_json_url = SiteSetting.oauth2_user_json_url.sub(':token', token.to_s).sub(':id', id.to_s)
 
@@ -83,6 +87,7 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
       json_walk(result, user_json, :username)
       json_walk(result, user_json, :name)
       json_walk(result, user_json, :email)
+      @user_datasets= walk_path(user_json, "principal.approvedDatasets".split('.'))
     end
 
     result
@@ -95,8 +100,6 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
     token = auth['credentials']['token']
     user_details = fetch_user_details(token, auth['info'][:id])
 
-    log("subhash-> user_details: #{user_details}")
-    
     result.name = user_details[:name]
     result.username = user_details[:username]
     result.email = user_details[:email]
@@ -104,27 +107,64 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
 
     current_info = ::PluginStore.get("oauth2_basic", "oauth2_basic_user_#{user_details[:user_id]}")
     if current_info
-      log("subhash-> user_detailscurrent_info: #{current_info}")
       result.user = User.where(id: current_info[:user_id]).first
     elsif SiteSetting.oauth2_email_verified?
-      log("subhash-> SiteSetting.oauth2_email_verified?")
       result.user = User.find_by_email(result.email)
-      log("subhash->  result.user #{result.user}")
       if result.user && user_details[:user_id]
-        log("subhash-> user_details[:user_id] #{user_details[:user_id]}")
         ::PluginStore.set("oauth2_basic", "oauth2_basic_user_#{user_details[:user_id]}", user_id: result.user.id)
-         log("subhash-> after oauth2_basic_user_ ")
       end
     end
-   log("subhash-> before extra_data")
+
+    existing_user = User.find_by_email(result.email)
+    log("Existing user find by email : #{existing_user}")
+
+    if existing_user
+      update_user_dataset_groups(existing_user, @user_datasets)
+    else
+      log("Set user_extra_info on plugin store")
+      ::PluginStore.set("oauth2_basic", "oauth2_basic_user_extra_info_#{user_details[:email]}", user_datasets: @user_datasets)
+    end
+
     result.extra_data = { oauth2_basic_user_id: user_details[:user_id] }
-     log("subhash->  result.extra_data #{result.extra_data}")
     result
   end
 
   def after_create_account(user, auth)
+    log("In after_create_account for user #{auth[:email]}")
     ::PluginStore.set("oauth2_basic", "oauth2_basic_user_#{auth[:extra_data][:oauth2_basic_user_id]}", user_id: user.id)
+    
+    user_extra_info = ::PluginStore.get("oauth2_basic", "oauth2_basic_user_extra_info_#{auth[:email]}")
+    update_user_dataset_groups(user, user_extra_info[:user_datasets]);
+
   end
+   
+  def update_user_dataset_groups(user, approvedGroups)
+    log("Update_user_dataset_groups, user= #{user.email}, approvedGroups=#{approvedGroups}")
+
+    Group.joins(:users).where(users: { id: user.id } ).each do |group|      
+      if !group.automatic?
+        log("User custom group = #{group.name}")
+        if approvedGroups.include?(group.name)
+          log("User group is already present in approved dataset list. Group name : #{group.name}")
+          approvedGroups.delete(gname)
+        else
+          log("User group is not present in approved dataset list hence removing user from it. Group name : #{group.name}")
+          group.remove(user)
+        end
+      end
+    end
+    approvedGroups.each do |groupName|
+      group = Group.where(name: groupName).first
+      if not group.nil?
+        log("Adding user into dataset group. Group name : #{groupName}")
+        group.group_users.create(user_id: user.id, group_id: group.id)
+      end
+    end
+    
+    ::PluginStore.remove("oauth2_basic", "oauth2_basic_user_extra_info_#{user.email]}")
+
+  end
+
 end
 
 auth_provider title_setting: "oauth2_button_title",
