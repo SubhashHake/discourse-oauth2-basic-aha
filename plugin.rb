@@ -160,8 +160,6 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
         group.group_users.create(user_id: user.id, group_id: group.id)
       end
     end
-    
-    ::PluginStore.remove("oauth2_basic", "oauth2_basic_user_extra_info_#{user.email]}")
 
   end
 
