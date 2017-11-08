@@ -146,7 +146,7 @@ class OAuth2BasicAuthenticator < ::Auth::OAuth2Authenticator
         log("User custom group = #{group.name}")
         if approvedGroups.include?(group.name)
           log("User group is already present in approved dataset list. Group name : #{group.name}")
-          approvedGroups.delete(gname)
+          approvedGroups.delete(group.name)
         else
           log("User group is not present in approved dataset list hence removing user from it. Group name : #{group.name}")
           group.remove(user)
